@@ -1,0 +1,11 @@
+{
+  "wifi": {
+    "ssid": "<wifi ssid>",
+    "password": "<wifi password>"
+  },
+  "gitlab": {
+    "private_token": "<gitlab.com private token>",
+    "project_id": 0,
+    "branch": "<gitlab.com branch to watch>"
+  }
+}
