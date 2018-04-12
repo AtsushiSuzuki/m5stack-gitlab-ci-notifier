@@ -1,4 +1,3 @@
-
 #include <M5Stack.h>
 #include <SD.h>
 #include <WiFi.h>
@@ -7,10 +6,11 @@
 
 #define ASSERT(expr) \
 { \
-  if (!expr) { \
-    M5.Lcd.printf("assertion failed: expected to be true\r\n"); \
+  auto actual = expr; \
+  if (!actual) { \
+    M5.Lcd.printf("assertion failed: expected trueish, got \"%s\"\r\n", String(actual).c_str()); \
     M5.Lcd.printf("  on %s(%d): %s", __FILE__, __LINE__, #expr); \
-    while (true); \
+    break; \
   } \
 }
 
@@ -18,9 +18,9 @@
 { \
   auto actual = expr; \
   if (actual != expected) { \
-    M5.Lcd.printf("assertion failed: expected \"%s\", got \"%s\"\r\n", String(expected), String(actual)); \
+    M5.Lcd.printf("assertion failed: expected \"%s\", got \"%s\"\r\n", #expected, String(actual).c_str()); \
     M5.Lcd.printf("  on %s(%d): %s", __FILE__, __LINE__, #expr); \
-    while (true); \
+    break; \
   } \
 }
 
@@ -29,42 +29,47 @@ String branch;
 String private_token;
 
 // the setup routine runs once when M5Stack starts up
-void setup(){
-  // Initialize the M5Stack object
-  M5.begin();
+void setup() {
+  do {
+    // Initialize the M5Stack object
+    M5.begin();
 
-  File file = SD.open("/config.json", "r");
-  ASSERT(file);
-  DynamicJsonBuffer jsonBuffer;
-  JsonObject &json = jsonBuffer.parseObject(file);
-  ASSERT(json.success());
-  file.close();
+    File file = SD.open("/config.json", "r");
+    ASSERT(file);
+    DynamicJsonBuffer jsonBuffer;
+    JsonObject &json = jsonBuffer.parseObject(file);
+    ASSERT(json.success());
+    file.close();
 
-  const char* ssid = json["wifi"]["ssid"];
-  ASSERT(ssid != NULL);
-  const char* pass = json["wifi"]["password"];
-  ASSERT(pass != NULL);
-  const char* private_token_ = json["gitlab"]["private_token"];
-  ASSERT(private_token != NULL);
-  private_token = private_token_;
-  project_id = json["gitlab"]["project_id"];
-  ASSERT(project_id != 0);
-  const char* branch_ = json["gitlab"]["branch"];
-  ASSERT(branch_ != NULL);
-  branch = branch_;
-  
-  M5.Lcd.print("connecting to ");
-  M5.Lcd.print(ssid);
-  WiFi.begin(ssid, pass);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    M5.Lcd.print(".");
+    const char* ssid = json["wifi"]["ssid"];
+    ASSERT(ssid != NULL);
+    const char* pass = json["wifi"]["password"];
+    ASSERT(pass != NULL);
+    private_token = json["gitlab"]["private_token"].as<String>();
+    ASSERT(private_token);
+    ASSERT(json["gitlab"]["project_id"].is<int>());
+    project_id = json["gitlab"]["project_id"];
+    branch = json["gitlab"]["branch"].as<String>();
+    ASSERT(branch);
+    
+    M5.Lcd.print("connecting to ");
+    M5.Lcd.print(ssid);
+    WiFi.begin(ssid, pass);
+    while (WiFi.status() != WL_CONNECTED) {
+      delay(500);
+      M5.Lcd.print(".");
+    }
+    M5.Lcd.println("");
+
+    M5.Lcd.print("connected as ");
+    M5.Lcd.println(WiFi.localIP());
+
+    return;
+  } while (false);
+
+  while (true) {
+    delay(5000);
   }
-  M5.Lcd.println("");
-
-  M5.Lcd.print("connected as ");
-  M5.Lcd.print(WiFi.localIP());
-  M5.Lcd.println("");
 }
 
 const char* cert = "-----BEGIN CERTIFICATE-----\n" \
@@ -104,29 +109,27 @@ const char* cert = "-----BEGIN CERTIFICATE-----\n" \
 
 // the loop routine runs over and over again forever
 void loop() {
-  M5.Lcd.fillScreen(0);
-  M5.Lcd.setCursor(0, 0);
+  do {
+    M5.Lcd.fillScreen(0);
+    M5.Lcd.setCursor(0, 0);
 
-  M5.Lcd.print("requesting https://gitlab.com/projects/:id/pipelines...");
-  String url = String("https://gitlab.com/api/v4/projects/") + project_id + "/pipelines?ref=" + branch + "&per_page=1";
-  HTTPClient client;
-  ASSERT(client.begin(url, cert));
-  client.addHeader("PRIVATE-TOKEN", private_token);
-  int result = client.GET();
-  if (result != HTTP_CODE_OK) {
-    M5.Lcd.println(" failed");
-    M5.Lcd.println(client.errorToString(result));
-    while (true);
-  }
+    M5.Lcd.print("GET https://gitlab.com/projects/:id/pipelines...");
+    String url = String("https://gitlab.com/api/v4/projects/") + project_id + "/pipelines?ref=" + branch + "&per_page=1";
+    HTTPClient client;
+    ASSERT(client.begin(url, cert));
+    client.addHeader("PRIVATE-TOKEN", private_token);
 
-  M5.Lcd.println("success");
+    int status = client.GET();
+    M5.Lcd.printf(" %d %s\n", status, client.errorToString(status).c_str());
+    ASSERT_EQUAL(status, HTTP_CODE_OK);
 
-  String json = client.getString();
-  DynamicJsonBuffer jsonBuffer;
-  const JsonVariant &stat = jsonBuffer.parseArray(json)[0]["status"];
-  ASSERT(stat.success());
-  M5.Lcd.println(stat.as<const char*>());
-  
+    String json = client.getString();
+    DynamicJsonBuffer buffer;
+    const char *stat = buffer.parseArray(json)[0]["status"];
+    ASSERT(stat != NULL);
+    M5.Lcd.println(stat);
+  } while (false);
+
   delay(5 * 60 * 1000);
 }
 
