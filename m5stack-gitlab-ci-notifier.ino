@@ -107,12 +107,16 @@ const char* cert = "-----BEGIN CERTIFICATE-----\n" \
   "NVOFBkpdn627G190\n" \
   "-----END CERTIFICATE-----\n";
 
+
 // the loop routine runs over and over again forever
 void loop() {
   do {
-    M5.Lcd.fillScreen(0);
+    M5.Lcd.setTextColor(BLACK, WHITE);
+    M5.Lcd.fillScreen(WHITE);
     M5.Lcd.setCursor(0, 0);
-
+    
+    IconLoading_begin();
+    
     M5.Lcd.print("GET https://gitlab.com/projects/:id/pipelines...");
     String url = String("https://gitlab.com/api/v4/projects/") + project_id + "/pipelines?ref=" + branch + "&per_page=1";
     HTTPClient client;
@@ -128,8 +132,96 @@ void loop() {
     const char *stat = buffer.parseArray(json)[0]["status"];
     ASSERT(stat != NULL);
     M5.Lcd.println(stat);
+    
+    IconLoading_end();
+    if (strcmp(stat, "success") == 0) {
+      IconOK_run();
+    } else {
+      IconNG_run();
+    }
+
+    delay(5 * 60 * 1000);
+    return;
   } while (false);
 
+  IconLoading_end();
+  IconQuestion_run();
   delay(5 * 60 * 1000);
 }
 
+void IconLoading_update() {
+  int tick = int(millis() / 40UL);
+  M5.Lcd.fillCircle(160 + 0,  112 - 52, 8, dotColor(tick, 7));
+  M5.Lcd.fillCircle(160 + 37, 112 - 37, 8, dotColor(tick, 6));
+  M5.Lcd.fillCircle(160 + 52, 112 + 0,  8, dotColor(tick, 5));
+  M5.Lcd.fillCircle(160 + 37, 112 + 37, 8, dotColor(tick, 4));
+  M5.Lcd.fillCircle(160 + 0,  112 + 52, 8, dotColor(tick, 3));
+  M5.Lcd.fillCircle(160 - 37, 112 + 37, 8, dotColor(tick, 2));
+  M5.Lcd.fillCircle(160 - 52, 112 + 0,  8, dotColor(tick, 1));
+  M5.Lcd.fillCircle(160 - 37, 112 - 37, 8, dotColor(tick, 0));
+}
+
+static uint16_t dotColor(int tick, int offset) {
+  uint16_t v = (tick + offset * 4) % 32;
+  return (v << 11) + (v << 6) + (v << 0);
+}
+
+TaskHandle_t task;
+void IconLoading_begin() {
+  xTaskCreatePinnedToCore(IconLoading_updateTask,
+                          "IconLoading_updateTask",
+                          1024,
+                          nullptr,
+                          2,
+                          &task,
+                          1);
+}
+
+void IconLoading_end() {
+  vTaskDelete(task);
+}
+
+static void IconLoading_updateTask(void *parameters) {
+  while (true) {
+    IconLoading_update();
+    delay(30);
+  }
+}
+
+void IconOK_run() {
+  M5.Lcd.fillCircle(160, 112, 62, GREEN);
+  M5.Lcd.fillCircle(160, 112, 60, WHITE);
+  for (int step = 0; step < 6; step++) {
+    int x0 = 130, y0 = 105, dx = 4, dy = 5, r = 6, rx = 4, ry = 4;
+    M5.Lcd.fillCircle(x0, y0, r, GREEN);
+    M5.Lcd.fillTriangle(x0 + rx, y0 - ry, x0 - rx, y0 + ry, x0 + (dx * step) + rx, y0 + (dy * step) - ry, GREEN);
+    M5.Lcd.fillTriangle(x0 - rx, y0 + ry, x0 + (dx * step) - rx, y0 + (dy * step) + ry, x0 + (dx * step) + rx, y0 + (dy * step) - ry, GREEN);
+    M5.Lcd.fillCircle(x0 + (dx * step), y0 + (dy * step), r, GREEN);
+    delay(30);
+  }
+  for (int step = 0; step < 8; step++) {
+    int x0 = 150, y0 = 130, dx = 6, dy = -4, r = 6, rx = 4, ry = 4;
+    M5.Lcd.fillCircle(x0, y0, r, GREEN);
+    M5.Lcd.fillTriangle(x0 + rx, y0 - ry, x0 - rx, y0 + ry, x0 + (dx * step) + rx, y0 + (dy * step) - ry, GREEN);
+    M5.Lcd.fillTriangle(x0 - rx, y0 + ry, x0 + (dx * step) - rx, y0 + (dy * step) + ry, x0 + (dx * step) + rx, y0 + (dy * step) - ry, GREEN);
+    M5.Lcd.fillCircle(x0 + (dx * step), y0 + (dy * step), r, GREEN);
+    delay(30);
+  }
+}
+
+void IconNG_run() {
+  M5.Lcd.fillCircle(160, 112, 62, RED);
+  M5.Lcd.fillCircle(160, 112, 60, WHITE);
+  for (int step = 0; step < 6; step++) {
+    int x0 = 160, y0 = 72, dy = 12, r = 6;
+    M5.Lcd.fillRoundRect(x0 - r, y0 - r, r * 2, (dy * step) + r, r, RED);
+    delay(30);
+  }
+  M5.Lcd.fillCircle(160, 152, 8, RED);
+}
+
+void IconQuestion_run() {
+  M5.Lcd.fillCircle(160, 112, 62, DARKGREY);
+  M5.Lcd.fillCircle(160, 112, 60, WHITE);
+  M5.Lcd.drawChar(135, 80, '?', DARKGREY, WHITE, 10);
+}
